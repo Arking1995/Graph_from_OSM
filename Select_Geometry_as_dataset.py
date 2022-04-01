@@ -17,7 +17,7 @@ template_width = 40
 template_height = 4   # the accuracy of anchor matching rely on the density of template, for chicago, 20-by-2 is not enough
 
 
-
+a = 1
 
 def dist(anchor, target):
     dist_x = np.abs(anchor[:, 0] - target[0])
