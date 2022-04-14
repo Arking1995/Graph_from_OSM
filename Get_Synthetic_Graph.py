@@ -26,7 +26,7 @@ thres_mean_size = 5 # also defined in utils.py, they should be the same in case 
 np.random.seed(42)
 
 
-plt.subplots(figsize=(20, 2))
+plt.subplots(figsize=(20, 4))
 
 
 def visual_grid_graph(G, filepath, filename):
