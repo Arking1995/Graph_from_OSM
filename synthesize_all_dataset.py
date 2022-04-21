@@ -197,7 +197,6 @@ def read_filter_polygon(openfile):
     bldg = pickle.load(openfile)
     out = []
     for i in bldg:
-        print(i.area)
         if i.geom_type == 'Polygon' and i.area > 4.0:
             out.append(i)
     return out
@@ -383,34 +382,21 @@ if __name__ == "__main__":
     h = 0
     coord_scale = 1.0
     template_width = 40
-    template_height = 4   # the accuracy of anchor matching rely on the density of template, for chicago, 20-by-2 is not enough
+    template_height = 3   # the accuracy of anchor matching rely on the density of template, for chicago, 20-by-2 is not enough
     N = template_width * template_height
     plt.subplots(figsize=(20, 4))
-    check_visual = 1
+    check_visual = 200
 
     rd_len = 0   ### total number = sample * (rd_len + 1) * (flip_len + 1) * (cat_len + 1)
     cat_len = 0
     flip_len = 0
 
-
-    fp = 'D:\\OSM_dataset\\'+ cityname [h] +'_origin_full'
-    if not os.path.exists(fp):
-        os.mkdir(fp)
-
-    vis_path = os.path.join(fp, 'visual')
-    if not os.path.exists(vis_path):
-        os.mkdir(vis_path)
-
-    bldg_path = os.path.join(fp, 'bldg')
-    if not os.path.exists(bldg_path):
-        os.mkdir(bldg_path)
-
-    road_path = os.path.join(fp, 'road')
-    if not os.path.exists(road_path):
-        os.mkdir(road_path)
+    bldg_list = []
+    min_bldg = 20   # >
+    max_bldg = 50   # <=
 
 
-    dat_fp = 'D:\\OSM_dataset\\'+ cityname [h] +'origin_filter_Bldg30-50_N' + str(N) + '_w'+str(template_width)+'_h'+str(template_height)+'_aug_rd' +str(rd_len) + '_cat' + str(cat_len) + '_flip' + str(flip_len)
+    dat_fp = 'D:\\OSM_dataset\\chicago_graph_dataset\\Bldg'+ str(min_bldg) + '-' + str(max_bldg) + '_N' + str(N) + '_w'+str(template_width)+'_h'+str(template_height)+'_noaug_rd' +str(rd_len) + '_cat' + str(cat_len) + '_flip' + str(flip_len)
     if not os.path.exists(dat_fp):
         os.mkdir(dat_fp)
 
@@ -426,27 +412,41 @@ if __name__ == "__main__":
     if not os.path.exists(transvis_fp):
         os.mkdir(transvis_fp)
 
+    bldg_list = []
+    c_idx = 0
+    bldgfiles = []
+    visfiles = []
+    # idx_map = {}
 
-    # contourfiles = [f for f in listdir(fp) if isfile(join(fp, f)) and '.png' not in f  and  'bldg' not in f]
-    bldgfiles = [f for f in listdir(bldg_path) if isfile(join(bldg_path, f))]
+
+
+    for jj in range(12):
+        # print('processing ', jj, ' started.')
+        fp = 'D:\\OSM_dataset\\chicago_full_set\\chicago_'+str(jj)+'_full'
+        vis_path = os.path.join(fp, 'visual')
+        bldg_path = os.path.join(fp, 'bldg')
+        road_path = os.path.join(fp, 'road')
+
+
+        curr = [os.path.join(bldg_path, f) for f in listdir(bldg_path) if isfile(join(bldg_path, f))]
+        bldgfiles = bldgfiles + curr
+
+        curr1  = [os.path.join(vis_path, f) for f in listdir(vis_path) if isfile(join(vis_path, f))]
+        visfiles = visfiles + curr1
+
 
 
     raw_num = len(bldgfiles)
-    c_idx = 0
-    idx_map = {}
-    bldg_list = []
 
 
     for i in range(raw_num):
-        bg_f_idx = bldgfiles[i]
 
-        with (open(os.path.join(bldg_path, bldgfiles[i]), "rb")) as openfile:
+        with (open(bldgfiles[i], "rb")) as openfile:
             bldg = read_filter_polygon(openfile)
             bldgnum = len(bldg)
             bldg_list.append(bldgnum)
 
-
-            if bldgnum > 30 and bldgnum <= 50:
+            if bldgnum > min_bldg and bldgnum <= max_bldg:
                 blk_azimuth, blk_bbx = get_bldggroup_parameters(bldg)
                 bldg = norm_block_to_horizonal(bldg, blk_azimuth, blk_bbx)  # the degree to rotate back to horizontal is (azimuth - 90)
                 env_bldg = geometry_envelope(bldg)
@@ -464,14 +464,23 @@ if __name__ == "__main__":
 
                     if c_idx % check_visual == 0:
                         visual_block_graph(g, transvis_fp, str(c_idx), draw_edge = True, draw_nonexist = False)
-                        idx_map[c_idx] = bg_f_idx
-                        rst = os.path.join(vis_path, str(bg_f_idx) + ".png")
+                        rst = visfiles[i]
                         dst = os.path.join(rawvis_fp, str(c_idx) + ".png")
                         shutil.copyfile(rst, dst)
 
                     c_idx += 1
 
 
-    with open(os.path.join(dat_fp, 'raw_to_selected_index_map.txt'), 'w') as file_map:
-        file_map.write(json.dumps(idx_map))
+
+
+
+    # with open(os.path.join(dat_fp, 'raw_to_selected_index_map.txt'), 'w') as file_map:
+    #     file_map.write(json.dumps(idx_map))
     
+
+    # bldg_list = np.array(bldg_list)
+    # print(np.mean(bldg_list), np.std(bldg_list), bldg_list.shape)
+    # bins = np.arange(min(bldg_list), max(bldg_list))
+    # plt.hist(bldg_list, bins=bins, alpha=0.5) 
+    # plt.xlim(0, 100)
+    # plt.show()      

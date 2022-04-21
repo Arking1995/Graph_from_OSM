@@ -14,7 +14,7 @@ import pickle
 import multiprocessing
 
 import warnings
-
+warnings.filterwarnings("ignore")
 
 def k_core(G, k):
     H = nx.Graph(G, as_view=True)
@@ -73,7 +73,7 @@ def process_osm(input):
     colsize = 30
     rowsize = 30
 
-    fp = os.path.join('D:\\OSM_dataset\\chicago_7', str(idx))
+    fp = os.path.join('D:\\OSM_dataset\\chicago_0', str(idx))
     if not os.path.exists(fp):
         os.mkdir(fp)
 
@@ -141,6 +141,10 @@ def process_osm(input):
         if cur.geom_type == 'Polygon':
             bounds_list.append(cur.bounds)
             poly_list.append(cur)
+
+    if len(bounds_list) <= 1:
+        print('process ', idx, ', no valid block.')
+        return False, idx   
 
     bounds_list = np.array(bounds_list, dtype = np.double)
     spatial_order = np.lexsort((bounds_list[:,1],bounds_list[:,0]))  # minx, miny order from low to high
@@ -236,7 +240,7 @@ def process_osm(input):
 
 if __name__ == '__main__':
 
-    fp = 'D:\\OSM_dataset\\chicago_7'
+    fp = 'D:\\OSM_dataset\\chicago_0'
     if not os.path.exists(fp):
         os.mkdir(fp)
 
@@ -248,30 +252,32 @@ if __name__ == '__main__':
     #         [47.5783890, 47.5516808, -122.6275684, -122.6879689],
     #         [48.2386057, 48.1580527, 16.4240489, 16.3034633] ]
 
-    # bbx = [ [41.8241064, 41.7424004, -87.6209515, -87.7285386]]  ####'chicago_new'
-    # bbx = [ [41.9058124, 41.8241064, -87.6209515, -87.7285386]] ####'chicago_origin'
-    # bbx = [ [41.9058124, 41.8241064, -87.7285386, -87.83612569]]  ####'chicago_new2'
 
 
-
-    bbx = [ [41.9875184, 41.8241064, -87.7285386, -87.83612569],  #### '3'
+    bbx = [ [41.9058124, 41.8241064, -87.6209515, -87.7285386],   #### '0'
+            [41.8241064, 41.7424004, -87.6209515, -87.7285386],   #### '1'
+            [41.9058124, 41.8241064, -87.7285386, -87.83612569],  #### '2'
+            [41.9875184, 41.8241064, -87.7285386, -87.83612569],  #### '3'
             [41.9875184, 41.8241064, -87.6209515, -87.7285386],   #### '4'
             [42.0692244, 41.9875184, -87.7285386, -87.83612569],  #### '5'
             [42.0692244, 41.9875184, -87.6209515, -87.7285386],    #### '6'
             [41.8241064, 41.7424004, -87.7285386, -87.83612569],   #### '7'
             [41.7424004, 41.6606944, -87.7285386, -87.83612569],   #### '8'
-            [41.7424004, 41.6606944,  -87.6209515, -87.7285386]    #### '9'
+            [41.7424004, 41.6606944,  -87.6209515, -87.7285386],    #### '9'
+            [41.7424004, 41.6606944,  -87.51336440, -87.6209515],    #### '10'
+            [41.8241064, 41.7424004, -87.51336440, -87.6209515]    #### '11'
             ]
 
 
 
-    til_col = 8
-    til_row = 8  
+    til_col = 12
+    til_row = 12  
     sub_bbx = []
     unfinished = set(range(til_col * til_row))
+    # unfinished = set([41, 47, 52, 56, 57, 58, 59, 60, 61, 62, 63])
     finished = set()
 
-    h = 4
+    h = 0
     til_col_arr = np.arange(bbx[h][2], bbx[h][3] + np.double(bbx[h][3] - bbx[h][2]) / np.double(til_col), np.double(bbx[h][3] - bbx[h][2]) / np.double(til_col))
     til_row_arr = np.arange(bbx[h][0], bbx[h][1] + np.double(bbx[h][1] - bbx[h][0]) / np.double(til_row), np.double(bbx[h][1] - bbx[h][0]) / np.double(til_row))
 
@@ -282,7 +288,8 @@ if __name__ == '__main__':
 
     input_list = []
     for idx, b in enumerate(sub_bbx):
-        input_list.append([b, idx])
+        if idx in unfinished:
+            input_list.append([b, idx])
 
     count_procs = 0
     processer_num = 8
