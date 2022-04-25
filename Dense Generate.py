@@ -5,14 +5,12 @@ import pickle
 from shapely import geometry
 import matplotlib.pyplot as plt
 from Bldg_fit_func import fit_bldg_features
-from Block_Graph import BlockGraph
 import numpy as np
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 import cv2
 import shapely.geometry as sg
 import shapely.affinity as sa
 from utils import included_angle, get_Block_azumith, get_RoadAccess_EdgeType, get_BldgRela_EdgeType, Ecu_dis, generate_RoadAccess_EdgeType
-from shapely.strtree import STRtree
 
 
 coord_cutoff = 1000.0

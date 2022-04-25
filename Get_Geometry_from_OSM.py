@@ -73,7 +73,7 @@ def process_osm(input):
     colsize = 30
     rowsize = 30
 
-    fp = os.path.join('D:\\OSM_dataset\\chicago_0', str(idx))
+    fp = os.path.join('D:\\OSM_dataset\\chicago_0.5_6', str(idx))
     if not os.path.exists(fp):
         os.mkdir(fp)
 
@@ -200,14 +200,17 @@ def process_osm(input):
         for j in range(start_idx, end_idx):
             if spatial_order[j] in un_processed:
                 if curr_blk.intersects(poly_list[spatial_order[j]]):
-                    inside_ft_idx.append(spatial_order[j])
-                    un_processed.remove(spatial_order[j])
+                    portion = np.double(curr_blk.intersection(poly_list[spatial_order[j]]).area) / np.double(poly_list[spatial_order[j]].area)
+                    if portion >= 0.5:
+                        inside_ft_idx.append(spatial_order[j])
+                        un_processed.remove(spatial_order[j])
 
 
         if len(inside_ft_idx)>0:
             print('process ', idx, ', blk ', ccount, ' contains: ', len(inside_ft_idx))
             with open(os.path.join(fp,'blk_road_'+str(ccount)), "wb") as poly_file:
                 obb_blk = ox.projection.project_geometry(curr_blk)[0]
+                plt.plot(*obb_blk.exterior.xy)
                 pickle.dump(obb_blk, poly_file, pickle.DEFAULT_PROTOCOL)
 
             for k in range(len(inside_ft_idx)):
@@ -240,9 +243,12 @@ def process_osm(input):
 
 if __name__ == '__main__':
 
-    fp = 'D:\\OSM_dataset\\chicago_0'
+    h = 6
+
+    fp = 'D:\\OSM_dataset\\chicago_0.5_' + str(h)
     if not os.path.exists(fp):
         os.mkdir(fp)
+
 
     # cityname = ['chicago', 'austin', 'kitsap1', 'kitsap2', 'vienna']    #'chicago', 'austin', 'kitsap', 'vienna'
 
@@ -254,7 +260,7 @@ if __name__ == '__main__':
 
 
 
-    bbx = [ [41.9058124, 41.8241064, -87.6209515, -87.7285386],   #### '0'
+    chicago_bbx = [ [41.9058124, 41.8241064, -87.6209515, -87.7285386],   #### '0'       (north, south, east, west)
             [41.8241064, 41.7424004, -87.6209515, -87.7285386],   #### '1'
             [41.9058124, 41.8241064, -87.7285386, -87.83612569],  #### '2'
             [41.9875184, 41.8241064, -87.7285386, -87.83612569],  #### '3'
@@ -268,16 +274,36 @@ if __name__ == '__main__':
             [41.8241064, 41.7424004, -87.51336440, -87.6209515]    #### '11'
             ]
 
+    # washington_bbx = [
+    #     [ 39.003728, 38.824455, -76.898788 , -77.151669]
+    # ]
+
+    # nyc_bbx =  [
+    #     [40.655555, 40.573849, -73.9287539, -74.036341],      # nyc 0 (north, south, east, west)
+    #     [40.7372610, 40.655555, -73.9287539, -74.036341],      # nyc 1
+    #     [40.8189670, 40.7372610, -73.9287539, -74.036341],      # nyc 2
+    #     [40.9006730, 40.8189670, -73.9287539, -74.036341],      # nyc 3
+
+    #     [40.655555, 40.573849, -73.82116680, -73.9287539],      # nyc 4 (north, south, east, west)
+    #     [40.7372610, 40.655555, -73.82116680, -73.9287539],      # nyc 5
+    #     [40.8189670, 40.7372610, -73.82116680, -73.9287539],      # nyc 6
+    #     [40.9006730, 40.8189670, -73.82116680, -73.9287539],      # nyc 7
+
+    #     [40.655555, 40.573849, -73.7135797, -73.82116680],      # nyc 8 (north, south, east, west)
+    #     [40.7372610, 40.655555, -73.7135797, -73.82116680],      # nyc 9
+    #     [40.8189670, 40.7372610, -73.7135797, -73.82116680],      # nyc 10
+    #     [40.9006730, 40.8189670, -73.7135797, -73.82116680]      # nyc 11
+    # ] 
+
+    bbx = chicago_bbx
 
 
     til_col = 12
     til_row = 12  
     sub_bbx = []
     unfinished = set(range(til_col * til_row))
-    # unfinished = set([41, 47, 52, 56, 57, 58, 59, 60, 61, 62, 63])
     finished = set()
 
-    h = 0
     til_col_arr = np.arange(bbx[h][2], bbx[h][3] + np.double(bbx[h][3] - bbx[h][2]) / np.double(til_col), np.double(bbx[h][3] - bbx[h][2]) / np.double(til_col))
     til_row_arr = np.arange(bbx[h][0], bbx[h][1] + np.double(bbx[h][1] - bbx[h][0]) / np.double(til_row), np.double(bbx[h][1] - bbx[h][0]) / np.double(til_row))
 

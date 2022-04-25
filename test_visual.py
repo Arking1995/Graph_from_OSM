@@ -7,7 +7,7 @@ import numpy as np
 from matplotlib.patches import Rectangle
 import matplotlib.lines as mlines
 
-plt.subplots(figsize=(20, 2))
+# plt.subplots(figsize=(20, 4))
 
 
 def visual_block_graph(G, filepath, filename, draw_edge = False, draw_nonexist = False):
