@@ -73,7 +73,7 @@ def process_osm(input):
     colsize = 30
     rowsize = 30
 
-    fp = os.path.join('D:\\OSM_dataset\\chicago_0.5_6', str(idx))
+    fp = os.path.join('/opt/data/liuhe95/osm_dataset/chicago_0.5_6', str(idx))
     if not os.path.exists(fp):
         os.mkdir(fp)
 
@@ -245,7 +245,7 @@ if __name__ == '__main__':
 
     h = 6
 
-    fp = 'D:\\OSM_dataset\\chicago_0.5_' + str(h)
+    fp = '/opt/data/liuhe95/osm_dataset/chicago_0.5_' + str(h)
     if not os.path.exists(fp):
         os.mkdir(fp)
 

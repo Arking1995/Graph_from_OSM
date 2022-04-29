@@ -82,15 +82,18 @@ def get_bldggroup_parameters(bldg):
 
 
 
-def dist(anchor, target):
+############ get the distance matrix from 'target' point to 'anchor' x-y matrix. asp_rto is the ratio of y unit compared to x, will be [0, 1]
+def dist(anchor, target, asp_rto = 1.0):
     dist_x = np.abs(anchor[:, 0] - target[0])
-    dist_y = np.abs(anchor[:, 1] - target[1])
+    dist_y = np.abs(anchor[:, 1] - target[1]) * asp_rto
     dist = np.multiply(dist_x, dist_x) + np.multiply(dist_y, dist_y)
     return dist
 
 
 
-def get_anchor_idx(dist, seq):
+############ get the index of smallest element in 'dist' and append it into 'seq' list, if it is not in 'seq' yet. If in, find the second smallest index.
+############ input dist matrix is the distance from all possible anchor point to the target point.
+def get_anchor_idx(dist, seq): 
     if np.argmin(dist) not in seq:
         return np.argmin(dist)
     else:
@@ -152,48 +155,149 @@ def norm_geometry_to_array(geometries):
     pos_sorted = pos[pos_sort]
     size_sorted = size[pos_sort]
     
-    return pos_sorted, size_sorted
+    return pos_sorted, size_sorted, pos_sort
 
 
 
 
-
-def geoarray_to_dense_grid(pos_sorted, size_sorted, template_width, template_height, blk_aspect_ratio, blk_longside):
-    unit_w = np.double(2 * coord_scale) / np.double(template_width)
-    unit_h = np.double(2 * coord_scale) / np.double(template_height)
-
-    w_anchor = np.arange(-coord_scale + unit_w / 2.0, coord_scale + 1e-6, unit_w)
-    h_anchor = np.arange(-coord_scale + unit_h / 2.0, coord_scale + 1e-6, unit_h)
+def combine_small_rows(all_row, pos_x_sort):
     
-    anchorw = np.tile(w_anchor, len(h_anchor))
-    anchorh = np.repeat(h_anchor, len(w_anchor))
-    anchor = np.stack( (anchorw, anchorh), axis = 1)
+    rownum = len(all_row)
+    y_thres = 0.6
+
+    if rownum == 1:
+        return all_row
+    
+    if rownum == 2:
+        y_thres = 0.2
+
+    for i in range(rownum-1):
+        # print(i, i, len(all_row[i]) / np.double(len(all_row[i+1])))
+        if len(all_row[i]) / np.double(len(all_row[i+1])) < 0.333 or len(all_row[i]) / np.double(len(all_row[i+1])) > 3.333:
+            # print(i, pos_x_sort[all_row[i], 1], pos_x_sort[all_row[i+1], 1])
+            if np.fabs(np.mean(pos_x_sort[all_row[i], 1]) - np.mean(pos_x_sort[all_row[i+1], 1])) < y_thres:
+                all_row[i].extend(all_row[i+1])
+                all_row.pop(i+1)
+                break
+
+    if len(all_row) == rownum:
+        return all_row
+
+    return combine_small_rows(all_row, pos_x_sort)
 
 
-    bldgnum = pos_sorted.shape[0]
-    nearest_pos_seq = []
-    for i in range(bldgnum):
-        dist_to_anchori = dist(anchor, pos_sorted[i, :])
-        anchor_idx = get_anchor_idx(dist_to_anchori, nearest_pos_seq)
-        nearest_pos_seq.append(anchor_idx)
 
-    # for i in range(bldgnum):  # check the matching quality between nodes and anchor
-    #     print(anchor[nearest_pos_seq[i]], pos_sorted[i])
+def remove_outlier_row(all_row):
+
+    row_num = []
+    for i in range(len(all_row)):
+        row_num.append(len(all_row[i]))
+    row_num = np.array(row_num)
+    min_idx = np.argmin(row_num)
+
+    if len(all_row) == 2:
+        if row_num[min_idx] > np.sum(row_num) * 0.1:
+            return all_row
+        else:
+            # all_row[0].extend(all_row[1])
+            all_row.pop(min_idx)
+            return all_row    
+
+    all_row.pop(min_idx)
+    return remove_outlier_row(all_row)
+
+
+
+
+
+
+
+def geoarray_to_dense_2row_cycle(row_assign, pos_sorted, size_sorted, template_width, template_height, bldggroup_asp_rto, bldggroup_longside):
+    
+    rownum = len(row_assign)
+    
+    xsort = []
+    each_rownum = []
+    for i in range(rownum):
+        xsort.append(np.sort(row_assign[i]))
+        each_rownum.append(len(row_assign[i]))
+    
+    idx_map = {}
+
+    if rownum == 1:
+
+        for i in range(each_rownum[0]):
+            if np.mean(pos_sorted[xsort[0], 1]) < 0:      ############ if mean of y-coordinate is lower than 0, use the lower part of grid, otherwise use upper part of the grid.
+                idx_map[xsort[0][i]] = i
+            else:
+                idx_map[xsort[0][i]] = i + template_width
+            
+                
+    elif rownum == 2:
+        max_len = max(each_rownum)
+        min_len = min(each_rownum)
+        maxrowid = np.argmax(each_rownum)
+        minrowid = np.argmin(each_rownum)
+
+        if max_len == min_len:
+            maxrowid = 0
+            minrowid = 1 
+
+        
+        is_upsidedown = True if np.mean(pos_sorted[xsort[maxrowid], 1]) >= np.mean(pos_sorted[xsort[minrowid], 1]) else False
+
+        for i in range(max_len):
+            if is_upsidedown:
+                idx_map[xsort[maxrowid][i]] = template_width + i
+            else:
+                idx_map[xsort[maxrowid][i]] = i
+
+        anchor_row = pos_sorted[xsort[maxrowid]]
+        nearest_pos_seq = []
+        for i in range(min_len):
+            dist_to_anchori = dist(anchor_row, pos_sorted[xsort[minrowid][i], :], 0.0)
+            anchor_idx = get_anchor_idx(dist_to_anchori, nearest_pos_seq)
+            nearest_pos_seq.append(anchor_idx)   
+
+        nearest_pos_seq = [xsort[maxrowid][i] for i in nearest_pos_seq]
+         
+        for i in range(min_len):
+            if is_upsidedown:
+                idx_map[xsort[minrowid][i]] = idx_map[nearest_pos_seq[i]] - template_width
+            else:
+                idx_map[xsort[minrowid][i]] = idx_map[nearest_pos_seq[i]] + template_width               
+
+    else:
+        print('Error row number inside block, number is: {}'.format(rownum))
+
+
+    #############  remove left and right Reverse node, which means the node x_sort order is reverse to graph topo row left-right order.
+    for i in range(rownum):
+        cur_max_graph_idx = 0
+        for j in range(len(xsort[i])):
+            if cur_max_graph_idx > idx_map[xsort[i][j]]:
+                cur_max_graph_idx += 1
+                idx_map[xsort[i][j]] = cur_max_graph_idx
+            else:
+                cur_max_graph_idx = idx_map[xsort[i][j]]
+
+
 
     pos_out = np.zeros((template_width * template_height, 2))
     size_out = np.zeros_like(pos_out)
     exist_out = np.zeros(template_width * template_height)
 
-    for i in range(bldgnum):
-        idx = nearest_pos_seq[i]
-        pos_out[idx] = pos_sorted[i, :]
-        size_out[idx] = size_sorted[i, :]
-        exist_out[idx] = 1
+    for xsort_idx, graph_idx in idx_map.items():
+        pos_out[graph_idx] = pos_sorted[xsort_idx, :]
+        size_out[graph_idx] = size_sorted[xsort_idx, :]
+        exist_out[graph_idx] = 1
+
     
-    max_node = template_width * template_height
     g = nx.grid_2d_graph(template_height, template_width)
     G = nx.convert_node_labels_to_integers(g, first_label=0, ordering='default', label_attribute = 'old_label')
-    G.graph['aspect_ratio'] = blk_aspect_ratio
+
+    G.graph['aspect_ratio'] = bldggroup_asp_rto
+    G.graph['long_side'] = bldggroup_longside
     for i in range(template_height):
         for j in range(template_width):
             idx = i * template_width + j
@@ -212,7 +316,199 @@ def geoarray_to_dense_grid(pos_sorted, size_sorted, template_width, template_hei
 
 
 
-def geoarray_to_graph(pos_sorted, size_sorted, blk_aspect_ratio, template_width, template_height):
+def geoarray_to_dense_grid(row_assign, pos_sorted, size_sorted, template_width, template_height, bldggroup_asp_rto, bldggroup_longside):
+    
+    rownum = len(row_assign)
+    
+    xsort = []
+    each_rownum = []
+    for i in range(rownum):
+        xsort.append(np.sort(row_assign[i]))
+        each_rownum.append(len(row_assign[i]))
+    
+    idx_map = {}
+
+    if rownum == 1:
+
+        for i in range(each_rownum[0]):
+            if np.mean(pos_sorted[xsort[0], 1]) < 0:      ############ if mean of y-coordinate is lower than 0, use the lower part of grid, otherwise use upper part of the grid.
+                idx_map[xsort[0][i]] = i
+            else:
+                idx_map[xsort[0][i]] = i + template_width
+            
+                
+    elif rownum == 2:
+        max_len = max(each_rownum)
+        min_len = min(each_rownum)
+        maxrowid = np.argmax(each_rownum)
+        minrowid = np.argmin(each_rownum)
+
+        if max_len == min_len:
+            maxrowid = 0
+            minrowid = 1 
+
+        
+        is_upsidedown = True if np.mean(pos_sorted[xsort[maxrowid], 1]) >= np.mean(pos_sorted[xsort[minrowid], 1]) else False
+
+        for i in range(max_len):
+            if is_upsidedown:
+                idx_map[xsort[maxrowid][i]] = template_width + i
+            else:
+                idx_map[xsort[maxrowid][i]] = i
+
+        anchor_row = pos_sorted[xsort[maxrowid]]
+        nearest_pos_seq = []
+        for i in range(min_len):
+            dist_to_anchori = dist(anchor_row, pos_sorted[xsort[minrowid][i], :], 0.0)
+            anchor_idx = get_anchor_idx(dist_to_anchori, nearest_pos_seq)
+            nearest_pos_seq.append(anchor_idx)   
+
+        nearest_pos_seq = [xsort[maxrowid][i] for i in nearest_pos_seq]
+         
+        for i in range(min_len):
+            if is_upsidedown:
+                idx_map[xsort[minrowid][i]] = idx_map[nearest_pos_seq[i]] - template_width
+            else:
+                idx_map[xsort[minrowid][i]] = idx_map[nearest_pos_seq[i]] + template_width               
+
+    else:
+        print('Error row number inside block, number is: {}'.format(rownum))
+
+
+    #############  remove left and right Reverse node, which means the node x_sort order is reverse to graph topo row left-right order.
+    for i in range(rownum):
+        cur_max_graph_idx = 0
+        for j in range(len(xsort[i])):
+            if cur_max_graph_idx > idx_map[xsort[i][j]]:
+                cur_max_graph_idx += 1
+                idx_map[xsort[i][j]] = cur_max_graph_idx
+            else:
+                cur_max_graph_idx = idx_map[xsort[i][j]]
+
+
+
+    pos_out = np.zeros((template_width * template_height, 2))
+    size_out = np.zeros_like(pos_out)
+    exist_out = np.zeros(template_width * template_height)
+
+    for xsort_idx, graph_idx in idx_map.items():
+        pos_out[graph_idx] = pos_sorted[xsort_idx, :]
+        size_out[graph_idx] = size_sorted[xsort_idx, :]
+        exist_out[graph_idx] = 1
+
+    
+    g = nx.grid_2d_graph(template_height, template_width)
+    G = nx.convert_node_labels_to_integers(g, first_label=0, ordering='default', label_attribute = 'old_label')
+
+    G.graph['aspect_ratio'] = bldggroup_asp_rto
+    G.graph['long_side'] = bldggroup_longside
+    for i in range(template_height):
+        for j in range(template_width):
+            idx = i * template_width + j
+            G.nodes[idx]['posx'] = pos_out[idx, 0]
+            G.nodes[idx]['posy'] = pos_out[idx, 1]
+            G.nodes[idx]['exist'] = exist_out[idx]
+            G.nodes[idx]['merge'] = 0
+            G.nodes[idx]['size_x'] = size_out[idx, 0]
+            G.nodes[idx]['size_y'] = size_out[idx, 1]
+    return G
+
+
+
+
+
+def generate_row_assign(pos_sorted, size_sorted):
+
+    pos_y_sort = np.argsort(pos_sorted[:,1])
+    bldgnum = pos_sorted.shape[0]
+    lx = ly = -1.1
+    lw = lh = 0
+    cur_row = 0
+    cur_max_maxy = -1.1
+    cur_min_maxy = 1.1
+    ################    all_row: each element stores the index of buildings in i-th row   
+    all_row = []
+    ################    row: the index of buildings in current row   
+    row = []
+
+    ################    initially separate row assigning into small groups  
+    for i in range(bldgnum):
+        curx, cury = pos_sorted[pos_y_sort[i]]
+        curw, curh = size_sorted[pos_y_sort[i]]
+
+        curmaxy = cury + curh / 2.0
+        curminy = cury - curh / 2.0
+
+        if len(row) == 0:
+            cur_row = cur_row + 1
+            cur_max_maxy = curmaxy
+            cur_min_maxy = curmaxy
+            cur_mean_maxy = curmaxy
+            lx, ly, lw, lh = curx, cury, curw, curh
+            row.append(pos_y_sort[i])
+            continue
+
+
+
+        if ( (ly + lh / 2.0) <= curminy )  or (cury >= cur_mean_maxy / np.double(len(row)) ):  ## removed condition:   or ( curmaxy - cur_max_maxy > 1e-5  and  curminy - cur_min_maxy > 1e-5 )
+            cur_row = cur_row + 1
+            cur_max_maxy = curmaxy
+            cur_min_maxy = curmaxy
+            cur_mean_maxy = curmaxy
+            lx, ly, lw, lh = curx, cury, curw, curh
+
+            all_row.append(row)
+            row = []
+            row.append(pos_y_sort[i])            
+            continue
+        
+        cur_mean_maxy += curmaxy
+
+        if cur_max_maxy <= curmaxy:
+            cur_max_maxy = curmaxy
+
+        if cur_min_maxy >= curmaxy:
+            cur_min_maxy = curmaxy
+
+        row.append(pos_y_sort[i])
+        lx, ly, lw, lh = curx, cury, curw, curh
+
+    ################    push the last row
+    if len(row) > 0:
+        all_row.append(row)
+
+    ################    combine small row groups into larger and nearby group on y-axis  
+    all_row = combine_small_rows(all_row, pos_sorted)
+
+    ################    remove the smallest third row 
+    if len(all_row) > 1:
+        all_row = remove_outlier_row(all_row)
+            
+
+    ################    rownum: store number of bldgs in each row
+    rownum = []
+    for i in range(len(all_row)):
+        rownum.append(len(all_row[i]))
+
+    ################    all_rowidx: store all idx number that is still existed inside the input pos_sorted array.
+    if len(all_row) > 1:
+        all_rowidx = all_row[0] + all_row[1]
+    else:
+        all_rowidx = all_row[0]
+    all_rowidx = [int(x) for x in all_rowidx]
+
+    ################    all_row: each element stores the index of buildings in i-th row 
+    ################    rownum: store number of bldgs in each row
+    ################    store all idx number that is still existed inside the input pos_sorted array.
+    return all_row, rownum, all_rowidx   
+
+
+
+
+
+
+
+def geoarray_to_anchor_grid(pos_sorted, size_sorted, bldggroup_aspect_ratio, bldggroup_longside, template_width, template_height):
 
     unit_w = np.double(2 * coord_scale) / np.double(template_width)
     unit_h = np.double(2 * coord_scale) / np.double(template_height)
@@ -248,7 +544,8 @@ def geoarray_to_graph(pos_sorted, size_sorted, blk_aspect_ratio, template_width,
     max_node = template_width * template_height
     g = nx.grid_2d_graph(template_height, template_width)
     G = nx.convert_node_labels_to_integers(g, first_label=0, ordering='default', label_attribute = 'old_label')
-    G.graph['aspect_ratio'] = blk_aspect_ratio
+    G.graph['aspect_ratio'] = bldggroup_aspect_ratio
+    G.graph['long_side'] = bldggroup_longside
     for i in range(template_height):
         for j in range(template_width):
             idx = i * template_width + j
@@ -361,11 +658,12 @@ def geometry_envelope(geometries):
 
 
 
-def get_final_aspect_ratio(bldg_list):
+def get_bldggroup_size_and_asp_rto(bldg_list):
     multi_poly = MultiPolygon(bldg_list)
     bbx = multi_poly.minimum_rotated_rectangle
     aspect_ratio = get_aspect_ratio(bbx)
-    return aspect_ratio
+    longside, shortside = get_size(bbx)
+    return aspect_ratio, longside, shortside
 
 
 
@@ -455,6 +753,12 @@ def save_visual_block_bldg(fp, bldg_list, block, c_idx):
     plt.clf()
 
 
+def save_visual_bldggroup(fp, bldg_list, c_idx):
+    for kk in range(len(bldg_list)):
+        plt.plot(*bldg_list[kk].exterior.xy)
+    plt.savefig(os.path.join(fp, str(c_idx) + '.png'))
+    plt.clf()
+
 
 
 
@@ -506,7 +810,14 @@ def get_bldg_features(bldg):
 
 
 
-
+def remove_toosmall_bldg(bldg):
+    out = []
+    for i in bldg:
+        if i.area < 10.0:
+            continue
+        else:
+            out.append(i)
+    return out
 
 
 
@@ -518,14 +829,15 @@ def get_bldg_features(bldg):
 if __name__ == "__main__":
 
 
-    cityname = ['chicago', 'austin', 'kitsap1', 'kitsap2', 'vienna'] 
+    cityname = ['chicago', 'washington', 'nyc'] 
     h = 0
     coord_scale = 1.0
     template_width = 25
     template_height = 2   # the accuracy of anchor matching rely on the density of template, for chicago, 20-by-2 is not enough
     N = template_width * template_height
-    # plt.subplots(figsize=(20, 4))
+    plt.subplots(figsize=(20, 4))
     check_visual = 200
+    is_dense = False
 
     rd_len = 0   ### total number = sample * (rd_len + 1) * (flip_len + 1) * (cat_len + 1)
     cat_len = 0
@@ -533,9 +845,10 @@ if __name__ == "__main__":
 
     min_bldg = 20   # >
     max_bldg = 50   # <=
+    longside_scale = 300.0
 
 
-    idx_fp = 'D:\\OSM_dataset\\'+ cityname[h] + '_graph_dataset\\filter'
+    idx_fp = '/opt/data/liuhe95/osm_dataset/'+ cityname[h] + '_graph_dataset/filter'
     with open(os.path.join(idx_fp, 'bldg_file.data'), 'rb') as f:
         bldgfiles = pickle.load(f)
     with open(os.path.join(idx_fp, 'road_file.data'), 'rb') as f:
@@ -543,14 +856,16 @@ if __name__ == "__main__":
     with open(os.path.join(idx_fp, 'vis_file.data'), 'rb') as f:
         visfiles = pickle.load(f)
 
-    with open(os.path.join(dat_fp,'block_asp_rto.npy'), 'wb') as f:
-        block_asp_rto = np.load(f)
+    with open(os.path.join(idx_fp,'block_asp_rto.data'), 'rb') as f:
+        block_asp_rto = pickle.load(f)
 
-    with open(os.path.join(dat_fp,'block_size.npy'), 'wb') as f:
-        block_size = np.load(f)
+    with open(os.path.join(idx_fp,'block_size.data'), 'rb') as f:
+        block_size = pickle.load(f)
+    
 
 
-    dat_fp = 'D:\\OSM_dataset\\'+ cityname[h] + '_graph_dataset\\Dense_Bldg'+ str(min_bldg) + '-' + str(max_bldg) + '_N' + str(N) + '_w'+str(template_width)+'_h'+str(template_height)+'_noaug_rd' +str(rd_len) + '_cat' + str(cat_len) + '_flip' + str(flip_len)
+    # dat_fp = os.path.join('/opt/data/liuhe95/osm_dataset/'+ cityname[h] + '_0.5_graph_dataset', 'Dense_Bldg'+ str(min_bldg) + '-' + str(max_bldg) + '_N' + str(N) + '_w'+str(template_width)+'_h'+str(template_height)+'_noaug_rd' +str(rd_len) + '_cat' + str(cat_len) + '_flip' + str(flip_len))
+    dat_fp = os.path.join('/opt/data/liuhe95/osm_dataset/'+ cityname[h] + '_graph_dataset', 'Grid_Bldg20-50_nofilter')
     if not os.path.exists(dat_fp):
         os.mkdir(dat_fp)
 
@@ -568,14 +883,14 @@ if __name__ == "__main__":
 
 
     block_bldgnum = []
-    block_size = []
-    block_asp_rto = []
+    block_row_num = []
     c_idx = 0
 
     raw_num = len(bldgfiles)
     raw_rnum = len(roadfiles)
     assert raw_num == raw_rnum, "contour and bldg file index is not corresponded {}, {}.".format(raw_num, raw_rnum)
 
+    max_len = 0
 
     for i in range(raw_num):
 
@@ -584,9 +899,9 @@ if __name__ == "__main__":
             block = pickle.load(open(roadfiles[i], "rb"))
 
             ############    fitler bldg that is not more than halved covered by the block contour 
-            bldg = filter_little_intersected_bldglist(bldg, block)
+            # bldg = filter_little_intersected_bldglist(bldg, block)
 
-            ############    Gert building shape type, too time consuming, leave it for future.
+            # ############    Gert building shape type, too time consuming, leave it for future.
             # blk_azimuth, blk_bbx = get_bldggroup_parameters(bldg)  # get size and aspect ratio
             # bldg = norm_block_to_horizonal(bldg, blk_azimuth, blk_bbx)  # the degree to rotate back to horizontal is (azimuth - 90)
             # for ii in range(len(bldg)):
@@ -595,42 +910,59 @@ if __name__ == "__main__":
             bldgnum = len(bldg)
             if bldgnum > min_bldg and bldgnum <= max_bldg:
                 blk_azimuth, blk_bbx = get_bldggroup_parameters(bldg)  # get size and aspect ratio
+                # bldg = remove_toosmall_bldg(bldg)
                 bldg = norm_block_to_horizonal(bldg, blk_azimuth, blk_bbx)  # the degree to rotate back to horizontal is (azimuth - 90)
                 env_bldg = geometry_envelope(bldg)
                 auged_bldg = geometry_augment(env_bldg, cat_len = cat_len, flip_len = flip_len, rd_len = rd_len)  
 
-                # bounds_list = []
-                # for ii in range(bldgnum):
-                #     cur = bldg[ii]
-                #     if cur.geom_type == 'Polygon':
-                #         bounds_list.append(cur.bounds)                
-                # bounds_list = np.array(bounds_list, dtype = np.double)
-                # spatial_order = np.lexsort((bounds_list[:,1],bounds_list[:,0]))  # minx, miny order from low to high
-
-
                 for k in range(len(auged_bldg)):
                     mod_bldg = modify_geometry_overlap(auged_bldg[k])   # dense structure, add new geometric parameters.
-                    blk_aspect_ratio = get_final_aspect_ratio(mod_bldg)
-                    pos, size = norm_geometry_to_array(mod_bldg)
+                    bldggroup_asp_rto, bldggroup_longside, _ = get_bldggroup_size_and_asp_rto(mod_bldg)
+                    bldggroup_longside = np.double(bldggroup_longside) / np.double(longside_scale)
+                    pos_xsorted, size_xsorted, xsort_idx = norm_geometry_to_array(mod_bldg)
 
-                    print(c_idx, blk_aspect_ratio)
 
-                    g = geoarray_to_graph(pos, size, blk_aspect_ratio, template_width, template_height)
+                    # print(c_idx, bldggroup_asp_rto, bldggroup_longside)
+                    row_assign, each_row_num, all_rowidx = generate_row_assign(pos_xsorted, size_xsorted)
+                    rownum = len(row_assign)
+                    block_row_num.append(rownum)
+
+                    if max_len <= max(each_row_num):
+                        max_len = max(each_row_num)
+                    print(c_idx, rownum, each_row_num, len(all_rowidx), max_len)
+
+                    if is_dense:
+                        g = geoarray_to_dense_grid(row_assign, pos_xsorted, size_xsorted, template_width, template_height, bldggroup_asp_rto, bldggroup_longside)
+                    else:
+                        g = geoarray_to_anchor_grid(pos_xsorted, size_xsorted, bldggroup_asp_rto, bldggroup_longside, template_width, template_height)
+
                     nx.write_gpickle(g, os.path.join(save_fp, str(c_idx) + ".gpickle"), 4)
 
+
+                    ######### plot original block together with bldg geometry
+                    # mod_bldg = [mod_bldg[xsort_idx[x]] for x in all_rowidx]
+                    # strr = str(c_idx) + '_r' + str(rownum)
+                    # for ki in range(len(row_assign)):
+                    #     strr = strr + '_' + str(each_row_num[ki])
+                    # save_visual_bldggroup(rawvis_fp, mod_bldg, strr)
+                    
                     if c_idx % check_visual == 0:
                         visual_block_graph(g, transvis_fp, str(c_idx), draw_edge = True, draw_nonexist = False)
-                        rst = visfiles[i]
-                        dst = os.path.join(rawvis_fp, str(c_idx) + ".png")
-                        shutil.copyfile(rst, dst)
+                        # rst = visfiles[i]
+                        # dst = os.path.join(rawvis_fp, str(c_idx) + ".png")
+                        # shutil.copyfile(rst, dst)
 
                     c_idx += 1
 
 
-        if c_idx > 3:
-            break
+        # if c_idx > 100:
+        #     break
 
 
+    # block_row_num = np.array(block_row_num)
+    # print(np.min(block_row_num), np.max(block_row_num))
+    # with open(os.path.join(dat_fp,'rownum.data'), 'wb') as f:
+    #     pickle.dump(block_row_num, f)
 
 
 

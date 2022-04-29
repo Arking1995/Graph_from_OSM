@@ -22,11 +22,11 @@ def read_filter_polygon(openfile):
 
 
 
-path = 'D:\\OSM_dataset\\chicago_0.5_6'
+path = '/opt/data/liuhe95/osm_dataset/chicago_0.5_6'
 if not os.path.exists(path):
     os.mkdir(path)
 
-out_path = 'D:\\OSM_dataset\\chicago_0.5_6_full'
+out_path = '/opt/data/liuhe95/osm_dataset/chicago_0.5_6_full'
 if not os.path.exists(out_path):
     os.mkdir(out_path)
 

@@ -464,7 +464,7 @@ if __name__ == "__main__":
 
 
     cityname = ['chicago', 'washington', 'nyc'] 
-    h = 0
+    h = 2
     coord_scale = 1.0
     template_width = 25
     template_height = 2   # the accuracy of anchor matching rely on the density of template, for chicago, 20-by-2 is not enough
@@ -479,7 +479,7 @@ if __name__ == "__main__":
     min_bldg = 20   # >
     max_bldg = 50   # <=
 
-    dat_fp = 'D:\\OSM_dataset\\'+ cityname[h] + '_0.5_graph_dataset'
+    dat_fp = '/opt/data/liuhe95/osm_dataset/'+ cityname[h] + '0.5_graph_dataset'
     if not os.path.exists(dat_fp):
         os.mkdir(dat_fp)
 
@@ -519,7 +519,7 @@ if __name__ == "__main__":
 
 
     for jj in range(12):
-        fp = 'D:\\OSM_dataset\\'+cityname[h]+'_0.5_full_set\\'+cityname[h]+'_0.5_'+str(jj)+'_full'
+        fp = '/opt/data/liuhe95/osm_dataset/'+cityname[h]+'_0.5_full_set/'+cityname[h]+'_0.5_'+str(jj)+'_full'
         vis_path = os.path.join(fp, 'visual')
         bldg_path = os.path.join(fp, 'bldg')
         road_path = os.path.join(fp, 'road')
@@ -546,10 +546,17 @@ if __name__ == "__main__":
         with (open(bldgfiles[i], "rb")) as openfile:
             bldg = read_filter_polygon(openfile)
             block = pickle.load(open(roadfiles[i], "rb"))
+            longside, _ = get_size(block.minimum_rotated_rectangle)
+
+            ############    fitler block is too large > 300m
+            if longside > 300.0:
+                print(str(i), ', block too large > 300m.')
+                continue
 
             ############    fitler bldg that is not more than halved covered by the block contour 
             bldg = filter_little_intersected_bldglist(bldg, block)
             if len(bldg) == 0:
+                print(str(i), ', no building after filtering.')
                 continue
 
             ############    fitler block contour too irregular             
@@ -651,17 +658,17 @@ if __name__ == "__main__":
 
 
     reserved_idx = np.array(reserved_idx)
-    with open(os.path.join(dat_fp,'reserved_idx.npy'), 'wb') as f:
-        np.save(f, reserved_idx)
+    with open(os.path.join(dat_fp,'reserved_idx.data'), 'wb') as f:
+        pickle.dump(reserved_idx, f)
 
-    with open(os.path.join(dat_fp,'bldgnum.npy'), 'wb') as f:
-        np.save(f, bldgnum_list)
+    with open(os.path.join(dat_fp,'bldgnum.data'), 'wb') as f:
+        pickle.dump(bldgnum_list, f)
 
-    with open(os.path.join(dat_fp,'block_size.npy'), 'wb') as f:
-        np.save(f, block_size)
+    with open(os.path.join(dat_fp,'block_size.data'), 'wb') as f:
+        pickle.dump(block_size, f)
 
-    with open(os.path.join(dat_fp,'block_asp_rto.npy'), 'wb') as f:
-        np.save(f, block_asp_rto)
+    with open(os.path.join(dat_fp,'block_asp_rto.data'), 'wb') as f:
+        pickle.dump(block_asp_rto, f)
 
 
     with open(os.path.join(dat_fp,'bldg_file.data'), 'wb') as f:
